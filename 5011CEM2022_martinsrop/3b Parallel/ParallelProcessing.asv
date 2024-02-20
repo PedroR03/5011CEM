@@ -1,0 +1,18 @@
+%% 1: Load Data
+close all
+
+FileName = '../Model/o3_surface_20180701000000.nc';
+
+Contents = ncinfo(FileName);
+NumHours = 25;
+
+[tPar] = ParallelFunction(FileName, Contents, NumHours);
+
+fprintf('Total time for parallel processing = %.2f s\n\n', tpar)
+
+% testing %
+
+for idx = 1:25
+    startNumData = idx; % first loop
+    EndNumData = idx: %first loop
+    Num2Process = 100 

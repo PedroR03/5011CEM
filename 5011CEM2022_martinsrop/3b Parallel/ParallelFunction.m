@@ -1,0 +1,68 @@
+function  [tPar] = ParallelFunction(FileName, Contents, NumHours, Num2Process, StartHour, PoolSize)
+%% 1: Load Data
+Lat = ncread(FileName, 'lat');
+Lon = ncread(FileName, 'lon');
+
+%% 2: Processing parameters
+% ##  provided by customer  ##
+RadLat = 30.2016;
+RadLon = 24.8032;
+RadO3 = 4.2653986e-08;
+
+StartLat = 1;
+NumLat = 400;
+StartLon = 1;
+NumLon = 700;
+
+%% 3: Pre-allocate output array memory
+NumLocations = (NumLon - 4) * (NumLat - 4);
+EnsembleVectorPar = zeros(NumLocations, NumHours);
+
+%% 4: Cycle through the hours and load all the models for each hour and record memory use
+Steps = 100;
+tic
+for idxTime = StartHour:NumHours
+
+    %% 5: Load the data for each hour    
+    DataLayer = 1;
+    for idx = [1, 2, 4, 5, 6, 7, 8]
+        HourlyData(DataLayer,:,:) = ncread(FileName, Contents.Variables(idx).Name,...
+            [StartLon, StartLat, idxTime], [NumLon, NumLat, 1]);
+        DataLayer = DataLayer + 1;
+    end
+    
+    %% 6: Pre-process the data for parallel processing
+    [Data2Process, LatLon] = PrepareData(HourlyData, Lat, Lon);
+   
+    
+%% Parallel Analysis
+    %% 7: Create the parallel pool and attache files for use
+    
+    if isempty(gcp('nocreate'))
+        parpool('local',PoolSize);
+    end
+    poolobj = gcp;
+    addAttachedFiles(poolobj,{'EnsembleValue'});
+    DataQ = parallel.pool.DataQueue;
+    %% 9: The actual parallel processing!
+    T4 = toc;
+    parfor idx = 1: Num2Process 
+        [EnsembleVectorPar(idx, idxTime)] = EnsembleValue(Data2Process(idx,:,:,:), LatLon, RadLat, RadLon, RadO3);
+        if idx/Steps == ceil(idx/Steps)
+            send(DataQ, idx/Steps);
+        end
+    end
+   
+    T3(idxTime) = toc - T4; 
+    fprintf('Parallel processing time for hour %i : %.1f s\n', idxTime, T3(idxTime))
+    
+end % end time loop
+T2 = toc;
+delete(gcp);
+
+%% 10: Reshape ensemble values to Lat, lon, hour format
+EnsembleVectorPar = reshape(EnsembleVectorPar, 696, 396, []);
+fprintf('Total processing time for %i workers = %.2f s\n', PoolSize, sum(T3));
+
+tPar = toc;
+end % end function
